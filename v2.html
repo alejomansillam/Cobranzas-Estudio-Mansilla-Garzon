@@ -388,6 +388,14 @@ var REFRESCO_MS = 60000;
 // Nombre visible de cada cartera (columna "Abogado" de la planilla).
 var CARTERAS = { 'A1135': '1ra vuelta', 'A1142': '2da vuelta' };
 
+// Feriados (AAAA-MM-DD). Sirven para contar días hábiles al comparar un día con el mes anterior.
+// Se agregan o se quitan acá. El puente del 23/03/2026 no está porque ese día se imputó normalmente.
+var FERIADOS={};
+['2025-12-08','2025-12-25',
+ '2026-01-01','2026-02-16','2026-02-17','2026-03-24','2026-04-02','2026-04-03','2026-05-01','2026-05-25',
+ '2026-06-15','2026-07-09','2026-07-10','2026-08-17','2026-10-12','2026-11-23','2026-12-07','2026-12-08','2026-12-25',
+ '2027-01-01'].forEach(function(f){ FERIADOS[f]=1; });
+
 // Errores de tipeo evidentes en la columna Gestor -> nombre correcto.
 // Mayúsculas y acentos ya se unifican solos; acá van solo los typos.
 var ALIAS_GESTOR = {
@@ -639,9 +647,29 @@ function agrupar(rs,fk){
 function suma(rs){ var s=0; for(var i=0;i<rs.length;i++) s+=rs[i].monto; return s; }
 
 function rot(a,b){ var otro=dt(a).getFullYear()!==new Date().getFullYear(), e=etiquetaRango(a,b,!otro); return {a:a,b:b,frente:'a '+e,en:'en '+e}; }
+// Día contra el que se compara una fecha suelta: el mismo día hábil (1.º, 2.º, 3.º…) del mes anterior.
+// Si la fecha no es hábil (sábado, domingo o feriado), se toma el mismo sábado/domingo del mes anterior.
+function esHabil(s){ var w=dt(s).getDay(); return w>=1&&w<=5&&!FERIADOS[s]; }
+function diaComparable(a){
+  var d=dt(a), y=d.getFullYear(), m=d.getMonth(), pm=new Date(y,m-1,1,12), fin=finMes(pm.getFullYear(),pm.getMonth()).getDate();
+  var mesTxt=fmtFecha(iso(pm),{month:'long'}), i, n=0, x='', k, ult='', quien;
+  function dia(j){ return iso(new Date(pm.getFullYear(),pm.getMonth(),j,12)); }
+  if(esHabil(a)){
+    for(i=1;i<=d.getDate();i++) if(esHabil(iso(new Date(y,m,i,12)))) n++;
+    for(i=1,k=0;i<=fin;i++) if(esHabil(dia(i))){ ult=dia(i); if(++k===n){ x=ult; break; } }
+    quien=x?n+'.º día hábil de '+mesTxt:'último día hábil de '+mesTxt;
+  } else {
+    n=Math.ceil(d.getDate()/7);
+    for(i=1,k=0;i<=fin;i++) if(dt(dia(i)).getDay()===d.getDay()){ ult=dia(i); if(++k===n){ x=ult; break; } }
+    quien=(x?n+'.º ':'último ')+fmtFecha(a,{weekday:'long'})+' de '+mesTxt;
+  }
+  x=x||ult;
+  quien+=' ('+fmtFecha(x,{weekday:'short',day:'numeric'})+')';
+  return {a:x,b:x,frente:'al '+quien,en:'el '+quien};
+}
 function periodoAnterior(a,b){
   var da=dt(a), db=dt(b);
-  if(a===b){ var x=addDias(a,-7); var wd=fmtFecha(x,{weekday:'long'}); return {a:x,b:x,frente:'al '+wd+' anterior',en:'el '+wd+' anterior'}; }
+  if(a===b) return diaComparable(a);
   if(da.getDate()===1&&da.getMonth()===db.getMonth()&&da.getFullYear()===db.getFullYear()){
     var pa=new Date(da.getFullYear(),da.getMonth()-1,1,12), fin=finMes(pa.getFullYear(),pa.getMonth());
     var completo=db.getDate()===finMes(db.getFullYear(),db.getMonth()).getDate();
